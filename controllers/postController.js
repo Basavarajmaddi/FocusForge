@@ -1,14 +1,31 @@
 const Post = require("../models/Post");
+const cloudinary = require("../config/cloudinary");
+const fs = require("fs");
+const path = require("path");
 
 const createPost = async (req, res) => {
   try {
     const { title, content } = req.body;
-    const image = req.file ? `/uploads/${req.file.filename}` : null;
+
+    let image = null;
+    let imagePublicId = null;
+
+    if (req.file) {
+      const uploadResult = await cloudinary.uploader.upload(req.file.path, { folder: "posts" });
+      image = uploadResult.secure_url;
+      imagePublicId = uploadResult.public_id;
+
+      // remove local file after upload
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error("Failed to remove temp file:", err);
+      });
+    }
 
     const post = await Post.create({
       title,
       content,
       image,
+      imagePublicId,
       user: req.user.id,
     });
 
@@ -39,7 +56,21 @@ const deletePost = async (req, res) => {
     if (post.user.toString() !== req.user.id) {
       return res.status(401).json({ message: "Not authorized" });
     }
-    
+    // remove image from Cloudinary if present
+    try {
+      if (post.imagePublicId) {
+        await cloudinary.uploader.destroy(post.imagePublicId);
+      } else if (post.image && post.image.startsWith("/uploads/")) {
+        // remove local file if older posts used local storage
+        const localPath = path.join(process.cwd(), post.image);
+        if (fs.existsSync(localPath)) {
+          fs.unlinkSync(localPath);
+        }
+      }
+    } catch (err) {
+      console.error("Error removing image:", err);
+    }
+
     await post.deleteOne();
     res.json({ message: "Post removed" });
   } catch (error) {
