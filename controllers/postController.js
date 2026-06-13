@@ -7,6 +7,10 @@ const createPost = async (req, res) => {
   try {
     const { title, content } = req.body;
 
+    if (!title || !content) {
+      return res.status(400).json({ message: "Title and content are required" });
+    }
+
     let image = null;
     let imagePublicId = null;
 
@@ -15,7 +19,6 @@ const createPost = async (req, res) => {
       image = uploadResult.secure_url;
       imagePublicId = uploadResult.public_id;
 
-      // remove local file after upload
       fs.unlink(req.file.path, (err) => {
         if (err) console.error("Failed to remove temp file:", err);
       });
@@ -33,7 +36,9 @@ const createPost = async (req, res) => {
 
     res.json(populatedPost);
   } catch (error) {
-    res.status(500).json(error);
+    console.error("createPost error:", error);
+    const status = error.name === "ValidationError" ? 400 : 500;
+    res.status(status).json({ message: error.message || "Server error" });
   }
 };
 
